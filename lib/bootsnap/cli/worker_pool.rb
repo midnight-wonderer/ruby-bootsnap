@@ -99,7 +99,7 @@ module Bootsnap
       def dispatch_loop
         loop do
           job = @queue.pop
-          puts 'jobjob'
+          $stderr.puts('jobjob')
           return true unless job
           begin
             @workers.sample(random: ::SecureRandom).write(job, block: false)
@@ -111,7 +111,7 @@ module Bootsnap
             end
           end
         rescue ::StandardError => e
-          puts 'dbg', e.message, e.inspect
+          $stderr.puts(['dbg', e.message, e.inspect])
           raise "hohohohoh"
         end
       ensure
