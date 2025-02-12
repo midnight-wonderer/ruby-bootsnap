@@ -7,7 +7,8 @@ module Bootsnap
         def create(size:, jobs:)
           if size > 0 && Process.respond_to?(:fork)
             # Inline.new(jobs: jobs)
-            ForkExecutor.new(size: size, jobs: jobs)
+            ThreadExecutor.new(size: size, jobs: jobs)
+            # ForkExecutor.new(size: size, jobs: jobs)
             # new(size: size, jobs: jobs)
           else
             Inline.new(jobs: jobs)
@@ -29,11 +30,7 @@ module Bootsnap
       class ThreadExecutor
         def initialize(size:, jobs: [])
           @size = size
-          @queue = ::Queue.new.tap do |q|
-            jobs.each do |job|
-              q.push(job)
-            end
-          end
+          @queue = ::Thread::Queue.new(jobs).tap(&:close)
           freeze
         end
 
@@ -41,7 +38,7 @@ module Bootsnap
           @size.times.map do
             Thread.new do
               loop do
-                @queue.pop(true).call
+                @queue.deq(true).call
               end
             rescue ::ThreadError
               puts 'completed'
