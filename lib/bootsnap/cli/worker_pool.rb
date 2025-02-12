@@ -51,7 +51,7 @@ module Bootsnap
             to_io.write(payload)
             true
           else
-            to_io.write_nonblock(payload, exception: false) != :wait_writable
+            to_io.write_nonblock(payload)
           end
         end
 
