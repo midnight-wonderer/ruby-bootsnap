@@ -62,10 +62,13 @@ module Bootsnap
         def work_loop
           puts 'bp04'
           loop do
-            job, *args = Marshal.load(@pipe_out)
+            raw = @pipe_out.read_nonblock(102_400)
+            job, *args = Marshal.load(raw)
             return if job == :exit
 
             @jobs.fetch(job).call(*args)
+          rescue ::IO::WaitReadable
+            ::IO.select([@pipe_out], nil, nil, 1)
           end
         rescue IOError
           nil
@@ -105,7 +108,6 @@ module Bootsnap
         loop do
           job = @queue.pop(timeout: 1)
           if job
-            puts 'wdistributed'
             unless @workers.sample.write(job, block: false)
               free_worker.write(job)
             end
@@ -139,7 +141,7 @@ module Bootsnap
         @queue.close
         puts 'th: join'
         @dispatcher_thread.join
-        puts "wke: #{index}, 0"
+        puts "wke: 0"
         @workers.each_with_index do |worker, index|
           puts "wke: #{index}, 1"
           _pid, status = Process.wait2(worker.pid)
