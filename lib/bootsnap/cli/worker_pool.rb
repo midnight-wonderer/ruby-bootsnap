@@ -34,13 +34,14 @@ module Bootsnap
               q.push(job)
             end
           end
+          freeze
         end
 
         def call
           @size.times.map do
             Thread.new do
               loop do
-                queue.pop(true).call
+                @queue.pop(true).call
               end
             rescue ::ThreadError
               puts 'completed'
