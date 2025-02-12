@@ -98,18 +98,20 @@ module Bootsnap
 
       def dispatch_loop
         loop do
-          case job = @queue.pop
-          when nil
-            @workers.each do |worker|
-              worker.write([:exit])
-              worker.close
-            end
-            return true
-          else
-            unless @workers.sample.write(job, block: false)
-              free_worker.write(job)
-            end
+          job = @queue.pop
+          return true unless job
+          next if @workers.sample.write(job, block: false)
+          begin
+            free_worker.write(job, block: false)
+          rescue ::StandardError => e
+            puts 'dbg', e.message, e.inspect
+            raise "hohohohoh"
           end
+        end
+      ensure
+        @workers.each do |worker|
+          worker.write([:exit])
+          worker.close
         end
       end
 
