@@ -100,13 +100,18 @@ module Bootsnap
         loop do
           job = @queue.pop
           return true unless job
-          next if @workers.sample.write(job, block: false)
           begin
-            free_worker.write(job, block: false)
-          rescue ::StandardError => e
-            puts 'dbg', e.message, e.inspect
-            raise "hohohohoh"
+            @workers.sample.write(job, block: false)
+          rescue ::IO::WaitWritable
+            begin
+              free_worker.write(job, block: false)
+            rescue ::IO::WaitWritable
+              retry
+            end
           end
+        # rescue ::StandardError => e
+        #   puts 'dbg', e.message, e.inspect
+        #   raise "hohohohoh"
         end
       ensure
         @workers.each do |worker|
