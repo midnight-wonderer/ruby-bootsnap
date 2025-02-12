@@ -103,19 +103,23 @@ module Bootsnap
       def dispatch_loop
         puts 'bp01'
         loop do
-          puts 'bp02'
           job = @queue.pop(timeout: 1)
           if job
+            puts 'wdistributed'
             unless @workers.sample.write(job, block: false)
               free_worker.write(job)
             end
           elsif !@queue.closed?
+            puts 'qclosed'
             redo
           else
-            puts 'bp03'
-            @workers.each do |worker|
+            puts 'wcleaning'
+            @workers.each_with_index do |worker, index|
+              puts "wk: #{index}, 1"
               worker.write([:exit])
+              puts "wk: #{index}, 2"
               worker.close
+              puts "wk: #{index}, 3"
             end
             return true
           end
@@ -133,9 +137,13 @@ module Bootsnap
 
       def shutdown
         @queue.close
+        puts 'th: join'
         @dispatcher_thread.join
-        @workers.each do |worker|
+        puts "wke: #{index}, 0"
+        @workers.each_with_index do |worker, index|
+          puts "wke: #{index}, 1"
           _pid, status = Process.wait2(worker.pid)
+          puts "wke: #{index}, 2"
           return status.exitstatus unless status.success?
         end
         nil
