@@ -99,6 +99,7 @@ module Bootsnap
       def dispatch_loop
         loop do
           job = @queue.pop
+          puts 'jobjob'
           return true unless job
           begin
             @workers.sample.write(job, block: false)
@@ -109,9 +110,9 @@ module Bootsnap
               retry
             end
           end
-        # rescue ::StandardError => e
-        #   puts 'dbg', e.message, e.inspect
-        #   raise "hohohohoh"
+        rescue ::StandardError => e
+          puts 'dbg', e.message, e.inspect
+          raise "hohohohoh"
         end
       ensure
         @workers.each do |worker|
