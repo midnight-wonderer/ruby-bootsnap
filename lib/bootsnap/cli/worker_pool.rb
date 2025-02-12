@@ -102,7 +102,7 @@ module Bootsnap
           puts 'jobjob'
           return true unless job
           begin
-            @workers.sample.write(job, block: false)
+            @workers.sample(random: ::SecureRandom).write(job, block: false)
           rescue ::IO::WaitWritable
             begin
               free_worker.write(job, block: false)
@@ -125,7 +125,7 @@ module Bootsnap
         @workers.map do |worker|
           [worker.to_io, worker]
         end.to_h.then do |mapping|
-          mapping[::IO.select(nil, mapping.keys)[1].sample]
+          mapping[::IO.select(nil, mapping.keys)[1].sample(random: ::SecureRandom)]
         end
       end
 
