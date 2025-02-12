@@ -84,7 +84,7 @@ module Bootsnap
       def initialize(size:, jobs: {})
         @size = size
         @jobs = jobs
-        @queue = Queue.new
+        @queue = ::Thread::Queue.new
         @pids = []
       end
 
@@ -98,18 +98,17 @@ module Bootsnap
 
       def dispatch_loop
         loop do
-          case job = @queue.pop
-          when nil
-            @workers.each do |worker|
-              worker.write([:exit])
-              worker.close
-            end
-            return true
-          else
-            unless @workers.sample.write(job, block: false)
-              free_worker.write(job)
-            end
+          job = @queue.pop(false, timeout: 1) || @queue.pop(true)
+          unless @workers.sample.write(job, block: false)
+            free_worker.write(job)
           end
+        rescue ::ThreadError
+          next unless @queue.closed?
+          @workers.each do |worker|
+            worker.write([:exit])
+            worker.close
+          end
+          return true
         end
       end
 
