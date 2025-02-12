@@ -114,7 +114,11 @@ module Bootsnap
       end
 
       def free_worker
-        IO.select(nil, @workers)[1].sample
+        @workers.map do |worker|
+          [worker.to_io, worker]
+        end.to_h.then do |mapping|
+          mapping[::IO.select(nil, mapping.keys)[1].sample]
+        end
       end
 
       def push(*args)
