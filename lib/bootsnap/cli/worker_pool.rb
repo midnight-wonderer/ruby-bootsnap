@@ -39,9 +39,9 @@ module Bootsnap
           @size.times.map do
             Thread.new do
               loop do
-                queue.pop(true)
+                queue.pop(true).call
               end
-            rescue ThreadError
+            rescue ::ThreadError
               puts 'completed'
             end
           end.each(&:join)

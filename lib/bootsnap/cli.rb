@@ -68,6 +68,8 @@ module Bootsnap
           job_board << precompile_json_files(gem_paths, exclude: gem_exclude)
         end
 
+        puts 'v001'
+
         @work_pool = WorkerPool.create(size: jobs, jobs: job_board.lazy.flat_map(&:lazy))
         @work_pool.call
 
