@@ -60,6 +60,7 @@ module Bootsnap
         end
 
         def work_loop
+          puts 'bp04'
           loop do
             job, *args = Marshal.load(@pipe_out)
             return if job == :exit
@@ -73,10 +74,13 @@ module Bootsnap
         def spawn
           @pid = Process.fork do
             to_io.close
+            puts 'bp05'
             work_loop
+            puts 'bp06'
             exit!(0)
           end
           @pipe_out.close
+          puts 'bp07'
           true
         end
       end
@@ -97,18 +101,24 @@ module Bootsnap
       end
 
       def dispatch_loop
+        puts 'bp01'
         loop do
-          job = @queue.pop(false, timeout: 1) || @queue.pop(true)
-          unless @workers.sample.write(job, block: false)
-            free_worker.write(job)
+          puts 'bp02'
+          job = @queue.pop(timeout: 1)
+          if job
+            unless @workers.sample.write(job, block: false)
+              free_worker.write(job)
+            end
+          elsif !@queue.closed?
+            redo
+          else
+            puts 'bp03'
+            @workers.each do |worker|
+              worker.write([:exit])
+              worker.close
+            end
+            return true
           end
-        rescue ::ThreadError
-          next unless @queue.closed?
-          @workers.each do |worker|
-            worker.write([:exit])
-            worker.close
-          end
-          return true
         end
       end
 
