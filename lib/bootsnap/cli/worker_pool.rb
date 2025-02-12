@@ -6,7 +6,8 @@ module Bootsnap
       class << self
         def create(size:, jobs:)
           if size > 0 && Process.respond_to?(:fork)
-            new(size: size, jobs: jobs)
+            ThreadExecutor.new(size: size, jobs: jobs)
+            # new(size: size, jobs: jobs)
           else
             Inline.new(jobs: jobs)
           end
@@ -14,21 +15,36 @@ module Bootsnap
       end
 
       class Inline
-        def initialize(jobs: {})
+        def initialize(jobs: [])
           @jobs = jobs
         end
 
-        def push(job, *args)
-          @jobs.fetch(job).call(*args)
+        def call
+          @jobs.each(&:call)
           nil
         end
+      end
 
-        def spawn
-          # noop
+      class ThreadExecutor
+        def initialize(size:, jobs: [])
+          @size = size
+          @queue = ::Queue.new.tap do |q|
+            jobs.each do |job|
+              q.push(job)
+            end
+          end
         end
 
-        def shutdown
-          # noop
+        def call
+          @size.times.map do
+            Thread.new do
+              loop do
+                queue.pop(true)
+              end
+            rescue ThreadError
+              puts 'completed'
+            end
+          end.each(&:join)
         end
       end
 
@@ -81,7 +97,7 @@ module Bootsnap
         end
       end
 
-      def initialize(size:, jobs: {})
+      def initialize(size:, jobs: [])
         @size = size
         @jobs = jobs
         @queue = Queue.new
@@ -89,7 +105,7 @@ module Bootsnap
       end
 
       def spawn
-        @workers = @size.times.map { Worker.new(@jobs) }
+        @workers = @size.times.map { Worker.new }
         @workers.each(&:spawn)
         @dispatcher_thread = Thread.new { dispatch_loop }
         @dispatcher_thread.abort_on_exception = true

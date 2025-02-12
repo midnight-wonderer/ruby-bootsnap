@@ -47,17 +47,11 @@ module Bootsnap
           revalidation: true,
         )
 
-        @work_pool = WorkerPool.create(size: jobs, jobs: {
-          ruby: method(:precompile_ruby),
-          yaml: method(:precompile_yaml),
-          json: method(:precompile_json),
-        })
-        @work_pool.spawn
-
+        job_board = []
         main_sources = sources.map { |d| File.expand_path(d) }
-        precompile_ruby_files(main_sources)
-        precompile_yaml_files(main_sources)
-        precompile_json_files(main_sources)
+        job_board << precompile_ruby_files(main_sources)
+        job_board << precompile_yaml_files(main_sources)
+        job_board << precompile_json_files(main_sources)
 
         if compile_gemfile
           # Gems that include JSON or YAML files usually don't put them in `lib/`.
@@ -69,14 +63,17 @@ module Bootsnap
           gem_pattern = %r{^#{Regexp.escape(Bundler.bundle_path.to_s)}/?(?:bundler/)?gems/[^/]+}
           gem_paths = $LOAD_PATH.map { |p| p[gem_pattern] || p }.uniq
 
-          precompile_ruby_files(gem_paths, exclude: gem_exclude)
-          precompile_yaml_files(gem_paths, exclude: gem_exclude)
-          precompile_json_files(gem_paths, exclude: gem_exclude)
+          job_board << precompile_ruby_files(gem_paths, exclude: gem_exclude)
+          job_board << precompile_yaml_files(gem_paths, exclude: gem_exclude)
+          job_board << precompile_json_files(gem_paths, exclude: gem_exclude)
         end
 
-        if (exitstatus = @work_pool.shutdown)
-          exit(exitstatus)
-        end
+        @work_pool = WorkerPool.create(size: jobs, jobs: job_board.lazy.flat_map(&:lazy))
+        @work_pool.call
+
+        # if (exitstatus = @work_pool.shutdown)
+        #   exit(exitstatus)
+        # end
       end
       0
     end
@@ -124,14 +121,17 @@ module Bootsnap
     private
 
     def precompile_yaml_files(load_paths, exclude: self.exclude)
-      return unless yaml
-
-      load_paths.each do |path|
-        if !exclude || !exclude.match?(path)
-          list_files(path, "**/*.{yml,yaml}").each do |yaml_file|
-            # We ignore hidden files to not match the various .ci.yml files
-            if !File.basename(yaml_file).start_with?(".") && (!exclude || !exclude.match?(yaml_file))
-              @work_pool.push(:yaml, yaml_file)
+      ::Enumerator.new do |yielder|
+        return unless yaml
+        load_paths.each do |path|
+          if !exclude || !exclude.match?(path)
+            list_files(path, "**/*.{yml,yaml}").each do |yaml_file|
+              # We ignore hidden files to not match the various .ci.yml files
+              if !File.basename(yaml_file).start_with?(".") && (!exclude || !exclude.match?(yaml_file))
+                yielder << lambda do
+                  precompile_yaml(yaml_file)
+                end
+              end
             end
           end
         end
@@ -147,14 +147,17 @@ module Bootsnap
     end
 
     def precompile_json_files(load_paths, exclude: self.exclude)
-      return unless json
-
-      load_paths.each do |path|
-        if !exclude || !exclude.match?(path)
-          list_files(path, "**/*.json").each do |json_file|
-            # We ignore hidden files to not match the various .config.json files
-            if !File.basename(json_file).start_with?(".") && (!exclude || !exclude.match?(json_file))
-              @work_pool.push(:json, json_file)
+      ::Enumerator.new do |yielder|
+        return unless json
+        load_paths.each do |path|
+          if !exclude || !exclude.match?(path)
+            list_files(path, "**/*.json").each do |json_file|
+              # We ignore hidden files to not match the various .config.json files
+              if !File.basename(json_file).start_with?(".") && (!exclude || !exclude.match?(json_file))
+                yielder << lambda do
+                  precompile_json(json_file)
+                end
+              end
             end
           end
         end
@@ -170,13 +173,16 @@ module Bootsnap
     end
 
     def precompile_ruby_files(load_paths, exclude: self.exclude)
-      return unless iseq
-
-      load_paths.each do |path|
-        if !exclude || !exclude.match?(path)
-          list_files(path, "**/{*.rb,*.rake,Rakefile}").each do |ruby_file|
-            if !exclude || !exclude.match?(ruby_file)
-              @work_pool.push(:ruby, ruby_file)
+      ::Enumerator.new do |yielder|
+        return unless iseq
+        load_paths.each do |path|
+          if !exclude || !exclude.match?(path)
+            list_files(path, "**/{*.rb,*.rake,Rakefile}").each do |ruby_file|
+              if !exclude || !exclude.match?(ruby_file)
+                yielder << lambda do
+                  precompile_ruby(ruby_file)
+                end
+              end
             end
           end
         end
