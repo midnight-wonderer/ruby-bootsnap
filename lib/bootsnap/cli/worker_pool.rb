@@ -6,7 +6,8 @@ module Bootsnap
       class << self
         def create(size:, jobs:)
           if size > 0 && Process.respond_to?(:fork)
-            ThreadExecutor.new(size: size, jobs: jobs)
+            Inline.new(jobs: jobs)
+            # ThreadExecutor.new(size: size, jobs: jobs)
             # new(size: size, jobs: jobs)
           else
             Inline.new(jobs: jobs)
