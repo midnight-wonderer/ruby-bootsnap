@@ -55,26 +55,23 @@ module Bootsnap
           @size = size
           @jobs = jobs.to_a
           @pids = []
-          @queue = ::Queue.new.tap do |q|
-            @jobs.each_with_index do |_job, index|
-              q.push(index)
-            end
-          end
+          @queue = ::Thread::Queue.new(0...@jobs.size).tap(&:close)
         end
 
         def call
           puts 'rr1'
+          jobs = @jobs
           @workers = @size.times.map do
-            Worker.new do |job_index|
-              @jobs[job_index]
-            end
+            Worker.new(&jobs.method(:[]))
           end.tap do |workers|
             workers.each(&:spawn)
           end
+          puts 'rr2'
           @dispatcher_thread = Thread.new { dispatch_loop }
           @dispatcher_thread.abort_on_exception = true
-          @queue.close
+          puts 'rr3'
           @dispatcher_thread.join
+          puts 'rr5'
           @workers.each do |worker|
             _pid, status = Process.wait2(worker.pid)
             return status.exitstatus unless status.success?
@@ -84,9 +81,9 @@ module Bootsnap
         private
 
         def dispatch_loop
-          puts 'rr2'
+          puts 'rr4'
           loop do
-            job = @queue.pop
+            job = @queue.deq
             return true unless job
             begin
               @workers.sample.write(job, block: false)
@@ -112,7 +109,7 @@ module Bootsnap
           @workers.map do |worker|
             [worker.to_io, worker]
           end.to_h.then do |mapping|
-            mapping[::IO.select(nil, mapping.keys)[1].sample(random: ::SecureRandom)]
+            mapping[::IO.select(nil, mapping.keys)[1].sample]
           end
         end
 
@@ -143,16 +140,6 @@ module Bootsnap
             to_io.close
           end
 
-          def work_loop
-            loop do
-              job_index, = Marshal.load(@pipe_out)
-              return if job_index == :exit
-              @fetch_job.call(job_index).call
-            end
-          rescue IOError
-            nil
-          end
-
           def spawn
             @pid = Process.fork do
               to_io.close
@@ -161,6 +148,18 @@ module Bootsnap
             end
             @pipe_out.close
             true
+          end
+
+          private
+
+          def work_loop
+            loop do
+              job_index, = Marshal.load(@pipe_out)
+              return if job_index == :exit
+              @fetch_job.call(job_index).call
+            end
+          rescue IOError
+            nil
           end
         end
       end
