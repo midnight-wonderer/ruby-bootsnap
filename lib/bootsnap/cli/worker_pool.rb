@@ -117,12 +117,18 @@ module Bootsnap
             redo
           else
             puts 'wcleaning'
-            @workers.each_with_index do |worker, index|
-              puts "wk: #{index}, 1"
-              worker.write([:exit])
-              puts "wk: #{index}, 2"
-              worker.close
-              puts "wk: #{index}, 3"
+            memo = @workers
+            loop do
+              break if memo.empty?
+              _, writable = ::IO.select(nil, memo)
+              writable.each_with_index do |worker, index|
+                puts "wk: #{index}, 1"
+                worker.write([:exit])
+                puts "wk: #{index}, 2"
+                worker.close
+                puts "wk: #{index}, 3"
+              end
+              memo -= writable
             end
             return true
           end
