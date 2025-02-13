@@ -62,13 +62,10 @@ module Bootsnap
         def work_loop
           puts 'bp04'
           loop do
-            raw = @pipe_out.read_nonblock(102_400)
-            job, *args = Marshal.load(raw)
+            job, *args = Marshal.load(@pipe_out)
             return if job == :exit
 
             @jobs.fetch(job).call(*args)
-          rescue ::IO::WaitReadable
-            ::IO.select([@pipe_out], nil, nil, 1)
           end
         rescue IOError
           nil
@@ -128,6 +125,7 @@ module Bootsnap
                 worker.close
                 puts "wk: #{index}, 3"
               end
+              puts 'progressing...' unless writable.empty?
               memo -= writable
             end
             return true
