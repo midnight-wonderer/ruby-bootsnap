@@ -80,6 +80,7 @@ module Bootsnap
             to_io.close
             puts 'bp05'
             work_loop
+            @pipe_out.close
             puts 'bp06'
             exit!(true)
           end
@@ -153,14 +154,23 @@ module Bootsnap
         @queue.close
         puts 'th: join'
         @dispatcher_thread.join
-        puts "wke: 0"
-        @workers.each_with_index do |worker, index|
-          puts "wke: #{index}, 1"
-          _pid, status = Process.wait2(worker.pid)
-          puts "wke: #{index}, 2"
+        puts "join completed; waiting..."
+        original_pids = pids = @workers.map(&:pid)
+        loop do
+          pid, status = Process.wait2
+          next unless pids.include?(pid)
+          puts "pid: #{pid}, #{original_pids.find_index(pid)}"
+          pids.delete(pid)
           return status.exitstatus unless status.success?
+          break if pids.empty?
         end
-        nil
+        # @workers.each_with_index do |worker, index|
+        #   puts "wke: #{index}, 1"
+        #   _pid, status = Process.wait2(worker.pid)
+        #   puts "wke: #{index}, 2"
+        #   return status.exitstatus unless status.success?
+        # end
+        # nil
       end
     end
   end
