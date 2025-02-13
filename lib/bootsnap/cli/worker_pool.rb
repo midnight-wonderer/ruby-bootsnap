@@ -70,7 +70,8 @@ module Bootsnap
             end
             @jobs.fetch(job).call(*args)
           end
-        rescue IOError
+        rescue IOError => e
+          puts 'loop io error', e.class, e.message
           nil
         end
 
@@ -79,8 +80,7 @@ module Bootsnap
             to_io.close
             puts 'bp05'
             work_loop
-            puts 'bp06'
-            exit!(0)
+            puts 'bp06', exit!(true)
           end
           @pipe_out.close
           puts 'bp07'
