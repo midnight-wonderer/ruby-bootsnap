@@ -132,12 +132,18 @@ module Bootsnap
             else
               puts 'continue cleaning up...'
               ::IO.select(nil, @workers)
+              puts 'available'
             end
           else
-            # free_worker.
-            unless @workers.sample.write(job, block: false)
-              free_worker.write(job)
+            begin
+              free_worker.write(job, block: false, exception: true)
+            rescue ::IO::WaitWritable => e
+              puts 'retry write...'
+              retry
             end
+            # unless @workers.sample.write(job, block: false)
+            #   free_worker.write(job)
+            # end
           end
         end
       end
