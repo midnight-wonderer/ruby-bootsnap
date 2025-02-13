@@ -102,33 +102,23 @@ module Bootsnap
       end
 
       def dispatch_loop
-        puts 'bp01'
+        puts 'start loop'
         loop do
-          job = @queue.pop(timeout: 1)
-          if job
+          case job = @queue.pop
+          when nil
+            puts 'cleaning up'
+            @workers.each_with_index do |worker, index|
+              puts "worker#{index}: p1"
+              worker.write([:exit])
+              puts "worker#{index}: p2"
+              worker.close
+              puts "worker#{index}: p3"
+            end
+            return true
+          else
             unless @workers.sample.write(job, block: false)
               free_worker.write(job)
             end
-          elsif !@queue.closed?
-            puts 'qclosed'
-            redo
-          else
-            puts 'wcleaning'
-            memo = @workers
-            loop do
-              break if memo.empty?
-              _, writable = ::IO.select(nil, memo)
-              writable.each_with_index do |worker, index|
-                puts "wk: #{index}, 1"
-                worker.write([:exit])
-                puts "wk: #{index}, 2"
-                worker.close
-                puts "wk: #{index}, 3"
-              end
-              puts 'progressing...' unless writable.empty?
-              memo -= writable
-            end
-            return true
           end
         end
       end
