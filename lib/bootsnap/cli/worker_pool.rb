@@ -97,18 +97,25 @@ module Bootsnap
       def dispatch_loop
         loop do
           job = @queue.pop
-          _, available_workers = ::IO.select(nil, @workers)
           if job
-            available_workers.sample.write(job)
+            begin
+              @workers.sample.write(job)
+            rescue ::IO::WaitWritable
+              available_workers.sample.write(job)
+            end
             next
           end
-          available_workers.each do |worker|
+          closed = []
+          @workers.each do |worker|
             worker.write([:exit])
             worker.close
+            closed << worker
+          rescue ::IO::WaitWritable
+            next
           end
-          @workers.delete_if(&available_workers.method(:include?))
+          @workers.delete_if(&closed.method(:include?))
           return if @workers.empty?
-          puts 'pospone...'
+          available_workers # wait for ones
         end
       rescue IO::WaitWritable => e
         puts 'err', e.class, e.message
@@ -128,6 +135,13 @@ module Bootsnap
           return status.exitstatus unless status.success?
         end
         nil
+      end
+
+      private
+
+      def available_workers
+        _, selected = ::IO.select(nil, @workers)
+        selected
       end
     end
   end
