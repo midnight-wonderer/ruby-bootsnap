@@ -97,34 +97,25 @@ module Bootsnap
 
       def dispatch_loop
         loop do
-          case job = @queue.pop
-          when nil
-            removed = []
+          job = @queue.pop
+          if job
+            ::IO.select(nil, @workers).tap do |(_nil, available)|
+              available.sample.write(job)
+            end
+          else
+            closed = []
             @workers.each do |worker|
               worker.write([:exit])
               worker.close
-              removed << worker
-            rescue ::IO::WaitWritable => e
+              closed << worker
+            rescue ::IO::WaitWritable
               next
             end
-            @workers.delete_if(&removed.method(:include?))
-            if @workers.empty?
-              return true
-            else
-              ::IO.select(nil, @workers)
-            end
-          else
-            begin
-              free_worker.write(job)
-            rescue ::IO::WaitWritable => e
-              retry
-            end
+            @workers.delete_if(&closed.method(:include?))
+            return if @workers.empty?
+            ::IO.select(nil, @workers)
           end
         end
-      end
-
-      def free_worker
-        IO.select(nil, @workers)[1].sample
       end
 
       def push(*args)
@@ -135,7 +126,7 @@ module Bootsnap
       def shutdown
         @queue.close
         @dispatcher_thread.join
-        @workers.each_with_index do |worker, index|
+        @workers.each do |worker|
           _pid, status = Process.wait2(worker.pid)
           return status.exitstatus unless status.success?
         end
