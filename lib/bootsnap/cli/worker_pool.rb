@@ -99,12 +99,12 @@ module Bootsnap
       end
 
       def spawn
-        @workers = @size.times.map do
-          Worker.new(@jobs) do |instance|
-            @workers.delete(instance)
-          end
+        @workers = @size.times.map { Worker.new(@jobs) }
+        @workers.each_with_index do |worker, index|
+          "spawning: w#{index}"
+          worker.spawn
+          puts "w#{index}-pid: #{worker.pid}"
         end
-        @workers.each(&:spawn)
         @dispatcher_thread = Thread.new { dispatch_loop }
         @dispatcher_thread.abort_on_exception = true
         true
