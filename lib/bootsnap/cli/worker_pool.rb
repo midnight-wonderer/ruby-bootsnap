@@ -45,14 +45,9 @@ module Bootsnap
           @pid = nil
         end
 
-        def write(message, block: true)
+        def write(message)
           payload = Marshal.dump(message)
-          if block
-            to_io.write(payload)
-            true
-          else
-            to_io.write_nonblock(payload, exception: false) != :wait_writable
-          end
+          to_io.write_nonblock(payload)
         end
 
         def close
@@ -62,8 +57,10 @@ module Bootsnap
         def work_loop
           loop do
             job, *args = Marshal.load(@pipe_out)
-            return if job == :exit
-
+            if job == :exit
+              @pipe_out.close
+              return
+            end
             @jobs.fetch(job).call(*args)
           end
         rescue IOError
@@ -72,9 +69,9 @@ module Bootsnap
 
         def spawn
           @pid = Process.fork do
-            to_io.close
+            close
             work_loop
-            exit!(0)
+            exit!(true)
           end
           @pipe_out.close
           true
@@ -84,7 +81,7 @@ module Bootsnap
       def initialize(size:, jobs: {})
         @size = size
         @jobs = jobs
-        @queue = Queue.new
+        @queue = Thread::Queue.new
         @pids = []
       end
 
@@ -98,23 +95,19 @@ module Bootsnap
 
       def dispatch_loop
         loop do
-          case job = @queue.pop
-          when nil
-            @workers.each do |worker|
-              worker.write([:exit])
-              worker.close
-            end
-            return true
-          else
-            unless @workers.sample.write(job, block: false)
-              free_worker.write(job)
-            end
+          job = @queue.pop
+          _, available_workers = ::IO.select(nil, @workers)
+          if job
+            available_workers.sample.write(job)
+            next
           end
+          available_workers.each do |worker|
+            worker.write([:exit])
+            worker.close
+          end
+          @workers.delete_if(&available_workers.method(:include?))
+          return if @workers.empty?
         end
-      end
-
-      def free_worker
-        IO.select(nil, @workers)[1].sample
       end
 
       def push(*args)
