@@ -93,6 +93,7 @@ module Bootsnap
         @jobs = jobs
         @queue = ::Thread::Queue.new
         @pids = []
+        STDOUT.sync = true
       end
 
       def spawn
