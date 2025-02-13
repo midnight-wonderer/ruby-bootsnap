@@ -69,7 +69,7 @@ module Bootsnap
 
         def spawn
           @pid = Process.fork do
-            close
+            to_io.close
             work_loop
             exit!(true)
           end
@@ -83,6 +83,7 @@ module Bootsnap
         @jobs = jobs
         @queue = Thread::Queue.new
         @pids = []
+        STDOUT.sync = true
       end
 
       def spawn
@@ -107,7 +108,11 @@ module Bootsnap
           end
           @workers.delete_if(&available_workers.method(:include?))
           return if @workers.empty?
+          puts 'pospone...'
         end
+      rescue IO::WaitWritable => e
+        puts 'err', e.class, e.message
+        raise
       end
 
       def push(*args)
