@@ -62,9 +62,12 @@ module Bootsnap
         def work_loop
           puts 'bp04'
           loop do
+            ::IO.select([@pipe_out])
             job, *args = Marshal.load(@pipe_out)
-            return if job == :exit
-
+            if job == :exit
+              puts 'work loop exited'
+              return
+            end
             @jobs.fetch(job).call(*args)
           end
         rescue IOError
@@ -123,6 +126,7 @@ module Bootsnap
               return true
             else
               puts 'continue cleaning up...'
+              ::IO.select(nil, @workers)
             end
           else
             unless @workers.sample.write(job, block: false)
