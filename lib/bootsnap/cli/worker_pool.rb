@@ -58,12 +58,11 @@ module Bootsnap
           loop do
             job, *args = Marshal.load(@pipe_out)
             if job == :exit
-              @pipe_out.close
               return
             end
             @jobs.fetch(job).call(*args)
           end
-        rescue IOError => e
+        rescue IOError
           nil
         end
 
@@ -86,9 +85,7 @@ module Bootsnap
       end
 
       def spawn
-        @workers = @size.times.map do
-          Worker.new(@jobs)
-        end
+        @workers = @size.times.map { Worker.new(@jobs) }
         @workers.each(&:spawn)
         @dispatcher_thread = Thread.new { dispatch_loop }
         @dispatcher_thread.abort_on_exception = true
