@@ -60,31 +60,25 @@ module Bootsnap
         end
 
         def work_loop
-          puts 'bp04'
           loop do
             job, *args = Marshal.load(@pipe_out)
             if job == :exit
-              puts 'work loop exited'
               @pipe_out.close
               return
             end
             @jobs.fetch(job).call(*args)
           end
         rescue IOError => e
-          puts 'loop io error', e.class, e.message
           nil
         end
 
         def spawn
           @pid = Process.fork do
             to_io.close
-            puts 'bp05'
             work_loop
-            puts 'bp06'
             exit!(true)
           end
           @pipe_out.close
-          puts 'bp07'
           true
         end
       end
@@ -94,14 +88,11 @@ module Bootsnap
         @jobs = jobs
         @queue = ::Thread::Queue.new
         @pids = []
-        STDOUT.sync = true
       end
 
       def spawn
         @workers = @size.times.map do
-          Worker.new(@jobs) do |instance|
-            @workers.delete(instance)
-          end
+          Worker.new(@jobs)
         end
         @workers.each(&:spawn)
         @dispatcher_thread = Thread.new { dispatch_loop }
@@ -110,40 +101,29 @@ module Bootsnap
       end
 
       def dispatch_loop
-        puts 'start loop'
         loop do
           case job = @queue.pop
           when nil
-            puts 'cleaning up'
             removed = []
-            @workers.each_with_index do |worker, index|
-              puts "worker#{index}: p1"
+            @workers.each do |worker|
               worker.write([:exit], block: false, exception: true)
-              puts "worker#{index}: p2"
               worker.close
-              puts "worker#{index}: p3"
               removed << worker
             rescue ::IO::WaitWritable => e
-              puts "worker#{index}-error: #{e.class} #{e.message}"
+              next
             end
             @workers.delete_if(&removed.method(:include?))
             if @workers.empty?
               return true
             else
-              puts 'continue cleaning up...'
               ::IO.select(nil, @workers)
-              puts 'available'
             end
           else
             begin
               free_worker.write(job, block: false, exception: true)
             rescue ::IO::WaitWritable => e
-              puts 'retry write...'
               retry
             end
-            # unless @workers.sample.write(job, block: false)
-            #   free_worker.write(job)
-            # end
           end
         end
       end
@@ -159,13 +139,9 @@ module Bootsnap
 
       def shutdown
         @queue.close
-        puts 'th: join'
         @dispatcher_thread.join
-        puts "wke: 0"
         @workers.each_with_index do |worker, index|
-          puts "wke: #{index}, 1"
           _pid, status = Process.wait2(worker.pid)
-          puts "wke: #{index}, 2"
           return status.exitstatus unless status.success?
         end
         nil
