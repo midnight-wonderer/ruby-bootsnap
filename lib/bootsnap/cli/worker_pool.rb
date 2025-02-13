@@ -45,13 +45,13 @@ module Bootsnap
           @pid = nil
         end
 
-        def write(message, block: true)
+        def write(message, block: true, exception: false)
           payload = Marshal.dump(message)
           if block
             to_io.write(payload)
             true
           else
-            to_io.write_nonblock(payload, exception: false) != :wait_writable
+            to_io.write_nonblock(payload, exception: exception) != :wait_writable
           end
         end
 
@@ -107,14 +107,23 @@ module Bootsnap
           case job = @queue.pop
           when nil
             puts 'cleaning up'
+            removed = []
             @workers.each_with_index do |worker, index|
               puts "worker#{index}: p1"
-              worker.write([:exit])
+              worker.write([:exit], block: false, exception: true)
               puts "worker#{index}: p2"
               worker.close
               puts "worker#{index}: p3"
+              removed << worker
+            rescue ::IO::WaitWritable => e
+              puts "worker#{index}-error: #{e.class} #{e.message}"
             end
-            return true
+            @workers.delete_if(&removed.method(:include?))
+            if @workers.empty?
+              return true
+            else
+              puts 'continue cleaning up...'
+            end
           else
             unless @workers.sample.write(job, block: false)
               free_worker.write(job)
