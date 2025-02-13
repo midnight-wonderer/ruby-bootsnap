@@ -45,14 +45,9 @@ module Bootsnap
           @pid = nil
         end
 
-        def write(message, block: true, exception: false)
+        def write(message)
           payload = Marshal.dump(message)
-          if block
-            to_io.write(payload)
-            true
-          else
-            to_io.write_nonblock(payload, exception: exception) != :wait_writable
-          end
+          to_io.write_nonblock(payload)
         end
 
         def close
@@ -106,7 +101,7 @@ module Bootsnap
           when nil
             removed = []
             @workers.each do |worker|
-              worker.write([:exit], block: false, exception: true)
+              worker.write([:exit])
               worker.close
               removed << worker
             rescue ::IO::WaitWritable => e
@@ -120,7 +115,7 @@ module Bootsnap
             end
           else
             begin
-              free_worker.write(job, block: false, exception: true)
+              free_worker.write(job)
             rescue ::IO::WaitWritable => e
               retry
             end
