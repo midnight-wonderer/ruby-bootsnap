@@ -111,39 +111,31 @@ module Bootsnap
 
       def dispatch_loop
         puts 'start loop'
+        finished_workers = []
         loop do
-          case job = @queue.pop
-          when nil
+          job = @queue.pop
+          current_workers = @workers - finished_workers
+          if job
+            IO.select(nil, current_workers).tap do |(_nil, available)|
+              available.sample.write(job)
+            end
+          else
             puts 'cleaning up'
-            removed = []
-            @workers.each_with_index do |worker, index|
+            current_workers.each_with_index do |worker, index|
               puts "worker#{index}: p1"
-              worker.write([:exit], block: false, exception: true)
+              worker.write([:exit])
               puts "worker#{index}: p2"
               worker.close
               puts "worker#{index}: p3"
-              removed << worker
-            rescue ::IO::WaitWritable => e
+              finished_workers << worker
+            rescue IO::WaitWritable
               puts "worker#{index}-error: #{e.class} #{e.message}"
+              next
             end
-            @workers.delete_if(&removed.method(:include?))
-            if @workers.empty?
-              return true
-            else
-              puts 'continue cleaning up...'
-              ::IO.select(nil, @workers)
-              puts 'available'
-            end
-          else
-            begin
-              free_worker.write(job, block: false, exception: true)
-            rescue ::IO::WaitWritable => e
-              puts 'retry write...'
-              retry
-            end
-            # unless @workers.sample.write(job, block: false)
-            #   free_worker.write(job)
-            # end
+            current_workers.delete_if(&finished_workers.method(:include?))
+            return if current_workers.empty?
+            IO.select(nil, current_workers)
+            puts 'continue cleaning up...'
           end
         end
       end
