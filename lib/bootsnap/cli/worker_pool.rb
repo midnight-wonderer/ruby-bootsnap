@@ -92,24 +92,25 @@ module Bootsnap
       end
 
       def dispatch_loop
+        finished_workers = []
         loop do
           job = @queue.pop
+          current_workers = @workers - finished_workers
           if job
-            IO.select(nil, @workers).tap do |(_nil, available)|
+            IO.select(nil, current_workers).tap do |(_nil, available)|
               available.sample.write(job)
             end
           else
-            closed = []
-            @workers.each do |worker|
+            current_workers.each do |worker|
               worker.write([:exit])
               worker.close
-              closed << worker
+              finished_workers << worker
             rescue IO::WaitWritable
               next
             end
-            @workers.delete_if(&closed.method(:include?))
-            return if @workers.empty?
-            IO.select(nil, @workers)
+            current_workers.delete_if(&finished_workers.method(:include?))
+            return if current_workers.empty?
+            IO.select(nil, current_workers)
           end
         end
       end
