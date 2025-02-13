@@ -62,10 +62,10 @@ module Bootsnap
         def work_loop
           puts 'bp04'
           loop do
-            ::IO.select([@pipe_out])
             job, *args = Marshal.load(@pipe_out)
             if job == :exit
               puts 'work loop exited'
+              @pipe_out.close
               return
             end
             @jobs.fetch(job).call(*args)
@@ -80,7 +80,8 @@ module Bootsnap
             to_io.close
             puts 'bp05'
             work_loop
-            puts 'bp06', exit!(true)
+            puts 'bp06'
+            exit!(true)
           end
           @pipe_out.close
           puts 'bp07'
@@ -97,7 +98,11 @@ module Bootsnap
       end
 
       def spawn
-        @workers = @size.times.map { Worker.new(@jobs) }
+        @workers = @size.times.map do
+          Worker.new(@jobs) do |instance|
+            @workers.delete(instance)
+          end
+        end
         @workers.each(&:spawn)
         @dispatcher_thread = Thread.new { dispatch_loop }
         @dispatcher_thread.abort_on_exception = true
@@ -129,6 +134,7 @@ module Bootsnap
               ::IO.select(nil, @workers)
             end
           else
+            # free_worker.
             unless @workers.sample.write(job, block: false)
               free_worker.write(job)
             end
