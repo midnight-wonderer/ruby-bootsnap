@@ -69,6 +69,7 @@ module Bootsnap
           @pid = Process.fork do
             to_io.close
             work_loop
+            @pipe_out.close
             exit!(true)
           end
           @pipe_out.close
