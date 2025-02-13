@@ -155,14 +155,15 @@ module Bootsnap
         puts 'th: join'
         @dispatcher_thread.join
         puts "join completed; waiting..."
-        original_pids = pids = @workers.map(&:pid)
+        original_pids = @workers.map(&:pid)
+        tracked_pids = original_pids.dup
         loop do
           pid, status = Process.wait2
-          next unless pids.include?(pid)
+          next unless tracked_pids.include?(pid)
           puts "pid: #{pid}, #{original_pids.find_index(pid)}"
-          pids.delete(pid)
+          tracked_pids.delete(pid)
           return status.exitstatus unless status.success?
-          break if pids.empty?
+          break if tracked_pids.empty?
         end
         # @workers.each_with_index do |worker, index|
         #   puts "wke: #{index}, 1"
